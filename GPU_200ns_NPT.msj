@@ -1,0 +1,236 @@
+# Desmond standard NPT relaxation protocol
+# All times are in the unit of ps.
+# Energy is in the unit of kcal/mol.
+#Step 1
+task {
+   task = "desmond:auto"
+   set_family = {
+      desmond = {
+         checkpt.write_last_step = no
+      }
+   }
+}
+#Step 2
+simulate {
+   title       = "Brownian Dynamics NVT, T = 10 K, small timesteps, and restraints on solute heavy atoms, 100ps"
+   annealing   = off
+   time        = 100
+   timestep    = [0.001 0.001 0.003 ]
+   temperature = 10.0
+   ensemble = {
+      class = "NVT"
+      method = "Brownie"
+      brownie = {
+         delta_max = 0.1
+      }
+   }
+   restrain = {
+      atom = "solute_heavy_atom"
+      force_constant = 500.0
+   }
+}
+#Step 3
+simulate {
+   title       = "Brownian Dynamics NVT, T = 10 K, small timesteps, and restraints on backbone heavy atoms, 100ps"
+   annealing   = off
+   time        = 100
+   timestep    = [0.001 0.001 0.003 ]
+   temperature = 10.0
+   ensemble = {
+      class = "NVT"
+      method = "Brownie"
+      brownie = {
+         delta_max = 0.1
+      }
+   }
+   restrain = {
+      atom = "asl:(( backbone ) ) AND NOT (( atom.ele H ) )"
+      force_constant = 500
+   }
+}
+#Step 4
+simulate {
+   title       = "Brownian Dynamics NVT, T = 10 K, small timesteps, and restraints on backbone heavy atoms, 100ps"
+   annealing   = off
+   time        = 100
+   timestep    = [0.001 0.001 0.003 ]
+   temperature = 10.0
+   ensemble = {
+      class = "NVT"
+      method = "Brownie"
+      brownie = {
+         delta_max = 0.1
+      }
+   }
+   restrain = {
+      atom = "asl:(( backbone ) ) AND NOT (( atom.ele H ) )"
+      force_constant = 250.0
+   }
+}
+#Step 5
+simulate {
+   title       = "Brownian Dynamics NVT, T = 10 K, small timesteps, and restraints on backbone heavy atoms, 100ps"
+   annealing   = off
+   time        = 100
+   timestep    = [0.001 0.001 0.003 ]
+   temperature = 10.0
+   ensemble = {
+      class = "NVT"
+      method = "Brownie"
+      brownie = {
+         delta_max = 0.1
+      }
+   }
+   restrain = {
+      atom = "asl:(( backbone ) ) AND NOT (( atom.ele H ) )"
+      force_constant = 50.0
+   }
+}
+#Step 6
+simulate {
+   effect_if   = [["==" "-gpu" "@*.*.jlaunch_opt[-1]"] 'ensemble.method = Langevin']
+   title       = "NVT, T = 10 K, small timesteps, and restraints on solute heavy atoms, 12ps"
+   annealing   = off
+   time        = 12
+   timestep    = [0.001 0.001 0.003]
+   temperature = 10.0
+   restrain    = { 
+      atom = "asl:(( backbone ) ) AND NOT (( atom.ele H ) )"
+      force_constant = 50.0 }
+   ensemble    = {
+      class  = NVT
+      method = Berendsen
+      thermostat.tau = 0.1
+   }
+   randomize_velocity.interval = 1.0
+   eneseq.interval             = 0.3
+   trajectory.center           = solute
+}
+#Step 7
+simulate {
+   title       = "NPT, T = 10 K, and restraints on solute heavy atoms, 24ps"
+   effect_if   = [["==" "-gpu" "@*.*.jlaunch_opt[-1]"] 'ensemble.method = Langevin']
+   annealing   = off
+   time        = 24
+   temperature = 10.0
+   restrain    = retain
+   ensemble    = {
+      class  = NPT
+      method = Berendsen
+      thermostat.tau = 0.1
+      barostat  .tau = 50.0
+   }
+
+   randomize_velocity.interval = 1.0
+   eneseq.interval             = 0.3
+   trajectory.center           = solute
+}
+solvate_pocket {
+   should_skip = true
+}
+#Step 8
+simulate {
+   title       = "NPT and restraints on solute heavy atoms, 50ps"
+   effect_if   = [["@*.*.annealing"] 'annealing = off temperature = "@*.*.temperature[0][0]"'
+                  ["==" "-gpu" "@*.*.jlaunch_opt[-1]"] 'ensemble.method = Langevin']
+   time        = 50
+   restrain    = retain
+   ensemble    = {
+      class  = NPT
+      method = Berendsen
+      thermostat.tau = 0.1
+      barostat  .tau = 50.0
+   }
+   randomize_velocity.interval = 1.0
+   eneseq.interval             = 0.3
+   trajectory.center           = solute
+}
+#Step 9
+simulate {
+   title       = "NPT and no restraints, 200ps"
+   effect_if   = [["@*.*.annealing"] 'annealing = off temperature = "@*.*.temperature[0][0]"'
+                  ["==" "-gpu" "@*.*.jlaunch_opt[-1]"] 'ensemble.method = Langevin']
+   time        = 200
+   ensemble    = {
+      class  = NPT
+      method = Berendsen
+      thermostat.tau = 0.1
+      barostat  .tau = 2.0
+   }
+   eneseq.interval   = 0.3
+   trajectory.center = solute
+}
+#Step 10 - Production Run
+simulate {
+   title       = "Unrestrained Production MD"
+   effect_if   = [[ "==" "-gpu" "@*.*.jlaunch_opt[-1]"] 'ensemble.method = Langevin']
+   time=200000.0 # the total simulation time in ps.
+   timestep=[0.002 0.002 0.006] #bonded, near and far timesteps in ps.
+   glue="solute" #ensures that the closest images for the closely associated molecules are recorded in the output cms and trajectory files. 
+   ensemble = {
+      class= NPT
+      method = Berendsen
+      thermostat.tau=1.0 # tau's are the relaxation times for the thermostat and barostat, respectively
+      barostat.tau=2.0
+   }
+# The NPT ensemble is controlled by a Nose-Hoover based algorithm. (pg 132 of the manual)
+# NPT_Ber or NPT_L use alternative algorithms based upon the work of Berendsen or Langevin.
+   # Temperature and Pressure of the system
+   temperature = 300.0
+   pressure = [1.01325 isotropic] # the default coupling scheme of the barostat is isotropic.
+   coulomb_method=pme       # Particle Mesh Ewald
+   # Tolerance, by default, is 1E-09. The smaller the tolerance, the more accurate but slower the computation is.
+   cutoff_radius = 9.0
+   # cutoff for non-bonded interactions for the real space part of the electrostatic interaction calculations
+   randomize_velocity = {
+      first         = 0.0
+      interval      = inf #how often to randomize the velocities, inf means never
+      seed          = 3182
+      temperature   = "@*.temperature"
+   }
+# OUTPUT: make sure to record at an interval corresponding to a multiple of the outer timestep, 
+# when nonbonded far interactions are computed.
+   trajectory = {
+      name              = "$JOBNAME$[_replica$REPLICA$]_trj"
+      first             = 0.0 # time to start recording trajectory
+      interval          = 50.0 # how often to write frames
+      periodicfix       = true #wrap molecules as a unit within the periodic boundary conditions 
+                               #rather than to wrap individual atoms (potentially splitting molecules across the unit cell
+                               #in the recorded trajectory)
+      frames_per_file   = 200 # pg 134 of the manual
+      center = "solute"
+   }
+   # recording the information about the simulation box
+   simbox = {
+      name     = "$JOBNAME$[_replica$REPLICA$]_simbox.dat"
+      first    = 0.0
+      interval = 500.0 # how often to update
+   }
+# record a break-down of the energy components during the simulation
+   energy_group  = {
+      name          = "$JOBNAME$[_replica$REPLICA$]_enegrp.dat"
+      first         = 0.0
+      interval      = 10.0
+      self_energy   = false # includes the self-energy term of Ewald summation into correction energy
+     corr_energy   = true # prints out the correction energy
+   }
+   checkpt = {
+      name             = "$JOBNAME.cpt"
+      first            = 0.0
+      interval         = 1000.0
+      write_last_step  = yes
+   }
+   maeff_output = {
+      name     = "$JOBNAME$[_replica$REPLICA$]-out.cms"
+      #Deprecated
+      #trjidx   = "$JOBNAME$[_replica$REPLICA$]-out.idx"
+      first    = 0.0
+      interval = 500.0
+   }
+   eneseq = {
+      name = "$JOBNAME$[_replica$REPLICA$].ene"
+      first=0.0
+      interval=10.0
+   }
+}
+
